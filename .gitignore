@@ -1,44 +1,98 @@
-# Prerequisites
-*.d
-
-.vs/
-
-
-# Compiled Object files
-*.slo
-*.lo
+# ==============================
+# 🔧 COMPILADOS Y BINARIOS
+# ==============================
+*.exe
+*.dll
+*.lib
+*.a
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
 *.pdb
+*.ilk
+*.idb
+*.exp
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# ==============================
+# 🧱 CARPETAS DE COMPILACIÓN
+# ==============================
+/bin/
+/build/
+/Debug/
+/Release/
+/x64/
+/x86/
+/out/
+/dist/
 
-# Fortran module files
-*.mod
-*.smod
+# ==============================
+# ⚙️ ARCHIVOS TEMPORALES Y DE SISTEMA
+# ==============================
+*.log
+*.tmp
+*.cache
+*.db
+*.sdf
+*.VC.db
+*.VC.opendb
+*.opendb
+*.ipch
+*.pch
+*.idb
+*.res
+*.rsp
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# ==============================
+# 💻 ARCHIVOS DE IDE (Visual Studio / Code::Blocks)
+# ==============================
+.vs/
+.vscode/
+*.user
+*.suo
+*.ncb
+*.aps
+*.cbp.layout
+*.layout
+*.depend
+*.workspace
+*.cbTemp*
 
-# Executables
-*.exe
-*.out
-*.app
+# ==============================
+# 📦 DEPENDENCIAS EXTERNAS Y ALLEGRO
+# ==============================
+allegro-*/
+packages/
+*.nuget/
+*.nupkg
+*.props
+*.targets
+*.vcxproj.user
+*.vcxproj.filters
 
-# debug information files
-*.dwo
+# ==============================
+# 🎨 ARCHIVOS MULTIMEDIA / ASSETS
+# ==============================
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.ttf
+*.otf
+
+# ==============================
+# 🧾 ARCHIVOS DE DOCUMENTACIÓN TEMPORALES
+# ==============================
+*.pdf~
+*.docx~
+*.bak
+
+# ==============================
+# 🧠 ARCHIVOS DE SISTEMA DEL OS
+# ==============================
+.DS_Store
+Thumbs.db
+desktop.ini

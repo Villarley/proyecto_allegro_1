@@ -61,3 +61,4 @@ float CabinaPeaje::getTiempoOcupado() const {
 
 Vehiculo CabinaPeaje::getVehiculoEnServicio() const {
     return cola.front();  // Solo válido si ocupada == true
+}

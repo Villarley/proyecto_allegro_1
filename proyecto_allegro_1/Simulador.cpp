@@ -80,3 +80,5 @@ float Simulador::utilizacionPromedioCabinas() const {
 
 int Simulador::totalVehiculosEnSistema() const {
     int total = 0;
+	return total;
+}

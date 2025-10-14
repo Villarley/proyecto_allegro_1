@@ -176,10 +176,20 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CabinaPeaje.cpp" />
+    <ClCompile Include="Carril.cpp" />
+    <ClCompile Include="Carro.cpp" />
     <ClCompile Include="proyecto_allegro_1.cpp" />
+    <ClCompile Include="Simulador.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CabinaPeaje.h" />
+    <ClInclude Include="Carril.h" />
+    <ClInclude Include="Carro.h" />
+    <ClInclude Include="Simulador.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

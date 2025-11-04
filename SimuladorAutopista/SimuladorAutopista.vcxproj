@@ -151,6 +151,7 @@
   <ItemGroup>
     <ClInclude Include="Escenario.h" />
     <ClInclude Include="Simulator.h" />
+    <ClInclude Include="Ui.h" />
     <ClInclude Include="Vehiculo.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

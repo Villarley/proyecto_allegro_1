@@ -1,139 +1,90 @@
 ﻿#include <allegro5/allegro.h>
 #include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
-#include <allegro5/allegro_ttf.h>
-#include <allegro5/allegro_color.h>
-#include <iostream>
-#include <cstdlib>
 #include "Escenario.h"
 
-using namespace Escenario;
-
 int main() {
-    // Inicializar Allegro
-    if (!al_init()) {
-        std::cerr << "Error: No se pudo inicializar Allegro.\n";
-        return -1;
-    }
+    using namespace Escenario;
+
+    al_init();
+    al_install_keyboard();
     al_init_primitives_addon();
-    al_install_mouse();
-    al_init_font_addon();
-    al_init_ttf_addon();
-
     ALLEGRO_DISPLAY* display = al_create_display(SCREEN_W, SCREEN_H);
-    if (!display) {
-        std::cerr << "Error al crear display.\n";
-        return -1;
-    }
-
-    ALLEGRO_FONT* font = al_create_builtin_font();
-    ALLEGRO_TIMER* timer = al_create_timer(1.0 / 60.0);
     ALLEGRO_EVENT_QUEUE* queue = al_create_event_queue();
+    ALLEGRO_TIMER* timer = al_create_timer(1.0 / 60.0);
+    ALLEGRO_FONT* font = al_create_builtin_font();
 
     al_register_event_source(queue, al_get_display_event_source(display));
-    al_register_event_source(queue, al_get_mouse_event_source());
+    al_register_event_source(queue, al_get_keyboard_event_source());
     al_register_event_source(queue, al_get_timer_event_source(timer));
 
-    bool running = true;
-    bool redraw = true;
-    bool menuOpen = false;
-
+    bool running = true, redraw = true;
     double simTime = 0.0;
-    float speedMult = 1.0f;
-    float spawnProb = 0.02f;
+    double speedMult = 1.0;     // 1x / 2x / 5x
+    float  spawnP = 0.6f;       // probabilidad por tick
 
-    struct UIButton {
-        float x, y, w, h;
-        const char* label;
-    };
-    UIButton btnMenu = { SCREEN_W - 100.0f, 15.0f, 80.0f, 30.0f, "MENU" };
-
+    const double SIM_LIMIT = 300.0; // 5 minutos
     al_start_timer(timer);
 
     while (running) {
         ALLEGRO_EVENT ev;
         al_wait_for_event(queue, &ev);
 
-        if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
-            running = false;
+        if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) running = false;
+
+        if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
+            switch (ev.keyboard.keycode) {
+            case ALLEGRO_KEY_ESCAPE: running = false; break;
+            case ALLEGRO_KEY_1: speedMult = 1.0; break;
+            case ALLEGRO_KEY_2: speedMult = 2.0; break;
+            case ALLEGRO_KEY_3: speedMult = 5.0; break;
+            case ALLEGRO_KEY_EQUALS: case ALLEGRO_KEY_PAD_PLUS:
+                spawnP = std::min(0.95f, spawnP + 0.05f); break;
+            case ALLEGRO_KEY_MINUS: case ALLEGRO_KEY_PAD_MINUS:
+                spawnP = std::max(0.05f, spawnP - 0.05f); break;
+            default: break;
+            }
         }
-        else if (ev.type == ALLEGRO_EVENT_TIMER) {
-            simTime += (1.0 / 60.0) * speedMult;
-            probabilistic_spawn(simTime, spawnProb);
-            update((1.0f / 60.0f) * speedMult, simTime);
+
+        if (ev.type == ALLEGRO_EVENT_TIMER) {
+            double dt = (1.0 / 60.0) * speedMult;
+            simTime += dt;
+
+            Escenario::probabilistic_spawn(simTime, spawnP);
+            Escenario::update((float)dt, simTime);
+
             redraw = true;
-        }
-        else if (ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) {
-            float mx = ev.mouse.x;
-            float my = ev.mouse.y;
-
-            if (mx > btnMenu.x && mx < btnMenu.x + btnMenu.w &&
-                my > btnMenu.y && my < btnMenu.y + btnMenu.h) {
-                menuOpen = !menuOpen;
-            }
-
-            if (menuOpen) {
-                if (mx > btnMenu.x - 150 && mx < btnMenu.x &&
-                    my > btnMenu.y + 40 && my < btnMenu.y + 70) {
-                    speedMult = std::max(0.2f, speedMult - 0.2f);
-                }
-                if (mx > btnMenu.x - 150 && mx < btnMenu.x &&
-                    my > btnMenu.y + 80 && my < btnMenu.y + 110) {
-                    speedMult = std::min(3.0f, speedMult + 0.2f);
-                }
-                if (mx > btnMenu.x - 150 && mx < btnMenu.x &&
-                    my > btnMenu.y + 120 && my < btnMenu.y + 150) {
-                    std::cout << "Guardando CSV...\n";
-                    export_csv("toll_log.csv");
-                }
-            }
+            if (simTime >= SIM_LIMIT) running = false;
         }
 
         if (redraw && al_is_event_queue_empty(queue)) {
             redraw = false;
-
-            draw(font, simTime, speedMult, spawnProb);
-
-            // Botón MENU visible
-            al_draw_filled_rectangle(
-                btnMenu.x, btnMenu.y,
-                btnMenu.x + btnMenu.w, btnMenu.y + btnMenu.h,
-                al_map_rgb(30, 144, 255)
-            );
-            al_draw_rectangle(
-                btnMenu.x, btnMenu.y,
-                btnMenu.x + btnMenu.w, btnMenu.y + btnMenu.h,
-                al_map_rgb(255, 255, 255), 2
-            );
-            al_draw_text(font, al_map_rgb(255, 255, 255),
-                btnMenu.x + 10, btnMenu.y + 8, 0, btnMenu.label);
-
-            // Menú desplegable
-            if (menuOpen) {
-                al_draw_filled_rectangle(
-                    btnMenu.x - 160, btnMenu.y + 35,
-                    btnMenu.x, btnMenu.y + 160,
-                    al_map_rgb(25, 25, 25)
-                );
-                al_draw_text(font, al_map_rgb(255, 255, 255),
-                    btnMenu.x - 145, btnMenu.y + 45, 0, "Bajar velocidad");
-                al_draw_text(font, al_map_rgb(255, 255, 255),
-                    btnMenu.x - 145, btnMenu.y + 85, 0, "Subir velocidad");
-                al_draw_text(font, al_map_rgb(255, 255, 255),
-                    btnMenu.x - 145, btnMenu.y + 125, 0, "Guardar CSV");
-            }
-
-            al_flip_display();
+            Escenario::draw(font, simTime, speedMult, spawnP);
         }
     }
 
-    export_csv("toll_log.csv");
-    std::cout << "Simulación terminada. Datos guardados en toll_log.csv\n";
+    // === Fin de simulación: exportar CSV y mostrar pantalla de estadísticas ===
+    const char* CSV = "toll_simulation_log.csv";
+    auto logs = Escenario::build_logs_snapshot();
+    Escenario::export_csv(CSV, logs);
+    auto st = Escenario::compute_stats_from_csv(CSV, simTime);
 
-    al_destroy_display(display);
+    bool statsRunning = true;
+    while (statsRunning) {
+        ALLEGRO_EVENT ev;
+        while (al_get_next_event(queue, &ev)) {
+            if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) { statsRunning = false; break; }
+            if (ev.type == ALLEGRO_EVENT_KEY_DOWN && ev.keyboard.keycode == ALLEGRO_KEY_ESCAPE) {
+                statsRunning = false; break;
+            }
+        }
+        Escenario::draw_stats_screen(font, st);
+        al_rest(1.0 / 30.0);
+    }
+
     al_destroy_font(font);
     al_destroy_timer(timer);
     al_destroy_event_queue(queue);
-
+    al_destroy_display(display);
     return 0;
 }

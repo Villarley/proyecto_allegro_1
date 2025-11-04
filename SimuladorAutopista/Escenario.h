@@ -2,144 +2,121 @@
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
-#include <deque>
+#include <list>
 #include <vector>
+#include <deque>
 #include <random>
 #include <ctime>
 #include <algorithm>
 #include <fstream>
-#include <iostream>
+#include <sstream>
+#include <string>
 #include <cmath>
-#include <limits>
 
+// ---------- Util ---------- //
 template <typename T>
-T clamp_value(T v, T lo, T hi) {
-    return (v < lo) ? lo : (v > hi ? hi : v);
-}
+T clamp_value(T v, T lo, T hi) { return (v < lo) ? lo : (v > hi ? hi : v); }
 
 namespace Escenario {
 
-    const int SCREEN_W = 900, SCREEN_H = 600;
+    // ---------- Config ---------- //
+    const int   SCREEN_W = 900, SCREEN_H = 600;
     const float ROAD_L = 150.0f, ROAD_R = 750.0f, TOLL_Y = 520.0f;
-    const int LANES = 3, BOOTHS = 5, MAX_VEHICLES = 20;
+    const int   LANES = 3, BOOTHS = 5, MAX_VEHICLES = 20;
+
     const float MIN_SERVICE = 2.0f, MAX_SERVICE = 5.0f;
-    const float DECISION_Y = 380.0f;
+    const float DECISION_Y = 380.0f;       // línea roja
     const float QUEUE_SPACING = 65.0f;
     const float SAFE_DIST = 30.0f;
-    const float MIN_DISTANCE = 15.0f; // ⭐ Distancia mínima en fila
     const float STOP_OFFSET = 20.0f;
     const float EXIT_Y = SCREEN_H + 50.0f;
+    const float CLEAR_TIME = 2.0f;         // tiempo de limpieza tras servicio
 
+    // ---------- Estados ---------- //
     enum Estado { EnCarretera, EnCola, EnServicio, Saliendo, Salio };
 
-    struct Vehiculo {
+    // ---------- Métricas ---------- //
+    struct Registro {
         int id;
-        float x, y, velocidad;
-        int carrilActual;
-        Estado estado;
-        int indicePila = -1; // ⭐ Posición en la pila
-        float tiempoServicio = 0, restanteServicio = 0;
-        double tCreacion = 0, tLlegadaCola = -1, tInicioServicio = -1, tSalida = -1;
-        ALLEGRO_COLOR color;
-
-        Vehiculo(int _id, float _x, float _y, float _vel, int _carril, double simTime)
-            : id(_id), x(_x), y(_y), velocidad(_vel),
-            carrilActual(_carril), estado(EnCarretera),
-            tCreacion(simTime),
-            color(al_map_rgb(rand() % 255, rand() % 255, rand() % 255)) {
-        }
+        double tCreacion;
+        double tLlegadaCola;
+        double tInicioServicio;
+        double tSalidaCabina;
     };
 
-    struct PilaCarril {
+    struct Stats {
+        int totalProcesados = 0;
+        double promEspera = 0.0;
+        double promTotalSistema = 0.0;
+        double flujoPorMin = 0.0;
+        std::vector<double> utilizacionPorCabina;
+    };
+
+    // ---------- Datos ---------- //
+    struct Vehiculo {
         int id;
-        float x;
-        std::deque<Vehiculo*> vehiculos;
+        float x, y;
+        float velocidad;
+        float vSalida;
+        int cabinaElegida = -1;
+        int carrilInicial;
+        Estado estado = EnCarretera;
 
-        PilaCarril(int _id, float _x) : id(_id), x(_x) {}
+        float tiempoServicio = 0.0f;
+        float restanteServicio = 0.0f;
 
-        void agregar(Vehiculo* v) {
-            v->x = x;
-            v->carrilActual = id;
-            v->indicePila = (int)vehiculos.size(); // ⭐ Al final
-            vehiculos.push_back(v);
-        }
+        double tCreacion = 0, tLlegadaCola = -1, tInicioServicio = -1, tSalidaCabina = -1;
 
-        void remover(Vehiculo* v) {
-            vehiculos.erase(std::remove(vehiculos.begin(), vehiculos.end(), v), vehiculos.end());
-            // ⭐ Reindexar después de remover
-            for (size_t i = 0; i < vehiculos.size(); ++i) {
-                vehiculos[i]->indicePila = (int)i;
-            }
-        }
-
-        Vehiculo* obtenerPorIndice(int idx) {
-            if (idx >= 0 && idx < (int)vehiculos.size()) {
-                return vehiculos[idx];
-            }
-            return nullptr;
+        Vehiculo(int _id, float _x, float _y, float _vel, int _lane, double simTime)
+            : id(_id), x(_x), y(_y), velocidad(_vel),
+            vSalida(std::max(_vel * 0.65f, 120.0f)),
+            carrilInicial(_lane), tCreacion(simTime) {
         }
     };
 
     struct Cabina {
         int id;
         float x, y;
-        std::deque<Vehiculo*> fila; // ⭐ PILA ORDENADA
+        std::deque<Vehiculo*> fila;
         Vehiculo* enServicio = nullptr;
+
+        double tOcupadaAcum = 0.0;
+        double tOcupadaHasta = 0.0;
+        double tBloqueadaHasta = 0.0;
+
         int procesados = 0;
-        double cooldownHasta = 0.0;
 
         Cabina(int _id, float _x, float _y) : id(_id), x(_x), y(_y) {}
-
         float stopY() const { return y - STOP_OFFSET; }
-
-        bool puedeAtender(double simTime) const {
-            return enServicio == nullptr && simTime >= cooldownHasta;
-        }
-
-        void agregarAFila(Vehiculo* v, double simTime) {
-            v->estado = EnCola;
-            v->carrilActual = id;
-            v->x = x;
-            v->tLlegadaCola = simTime;
-            v->indicePila = (int)fila.size(); // ⭐ AL FINAL siempre
-            fila.push_back(v);
-        }
-
-        void reindexar() {
-            for (size_t i = 0; i < fila.size(); ++i) {
-                fila[i]->indicePila = (int)i;
-            }
-        }
-
-        Vehiculo* obtenerPorIndice(int idx) {
-            if (idx >= 0 && idx < (int)fila.size()) {
-                return fila[idx];
-            }
-            return nullptr;
-        }
     };
 
-    static std::deque<Vehiculo> vehiculos;
-    static std::vector<PilaCarril> carriles;
+    // ---------- Estado global ---------- //
+    static std::list<Vehiculo> vehiculos;
     static std::vector<Cabina> cabinas;
+    static std::vector<Registro> bitacora;
 
     static std::mt19937 rng((unsigned)time(NULL));
     static std::uniform_real_distribution<float> prob(0.0f, 1.0f);
     static std::uniform_real_distribution<float> Uservice(MIN_SERVICE, MAX_SERVICE);
 
-    float road_width() { return ROAD_R - ROAD_L; }
-    float lane_center_x(int i) { return ROAD_L + (road_width() / LANES) * (i + 0.5f); }
-    float booth_center_x(int i) { return ROAD_L + (road_width() / BOOTHS) * (i + 0.5f); }
+    inline float road_width() { return ROAD_R - ROAD_L; }
+    inline float lane_center_x(int i) { return ROAD_L + (road_width() / LANES) * (i + 0.5f); }
+    inline float booth_center_x(int i) { return ROAD_L + (road_width() / BOOTHS) * (i + 0.5f); }
 
-    void init() {
-        if (!carriles.empty()) return;
-        carriles.clear();
-        for (int i = 0; i < LANES; ++i) carriles.emplace_back(i, lane_center_x(i));
+    inline void reset() {
+        vehiculos.clear();
         cabinas.clear();
+        bitacora.clear();
         for (int i = 0; i < BOOTHS; ++i) cabinas.emplace_back(i, booth_center_x(i), TOLL_Y);
     }
 
-    void draw_scene() {
+    inline void init_once() {
+        if (!cabinas.empty()) return;
+        reset();
+    }
+
+    // ---------- Dibujo ---------- //
+    inline void draw_scene() {
         al_clear_to_color(al_map_rgb(34, 139, 34));
         al_draw_filled_rectangle(ROAD_L, 0, ROAD_R, SCREEN_H, al_map_rgb(50, 50, 50));
         for (int i = 1; i < LANES; ++i) {
@@ -152,8 +129,8 @@ namespace Escenario {
             al_draw_filled_rectangle(cab.x - 35, TOLL_Y - 70, cab.x + 35, TOLL_Y - 20, al_map_rgb(180, 180, 180));
     }
 
-    void draw(ALLEGRO_FONT* font, double simTime, double speedMult, double spawnP) {
-        init();
+    inline void draw(ALLEGRO_FONT* font, double simTime, double speedMult, float spawnP) {
+        init_once();
         draw_scene();
 
         for (auto& v : vehiculos) {
@@ -161,227 +138,238 @@ namespace Escenario {
             ALLEGRO_COLOR col =
                 (v.estado == EnCarretera) ? al_map_rgb(0, 255, 0) :
                 (v.estado == EnCola) ? al_map_rgb(255, 215, 0) :
-                (v.estado == EnServicio) ? al_map_rgb(255, 0, 0) :
-                (v.estado == Saliendo) ? al_map_rgb(150, 150, 150) : v.color;
+                (v.estado == EnServicio) ? al_map_rgb(0, 150, 255) :
+                (v.estado == Saliendo) ? al_map_rgb(150, 150, 150) :
+                al_map_rgb(255, 255, 255);
             al_draw_filled_rectangle(v.x - 15, v.y - 10, v.x + 15, v.y + 10, col);
-            al_draw_textf(font, al_map_rgb(255, 255, 255), v.x, v.y - 5, ALLEGRO_ALIGN_CENTER, "%d", v.id);
+            al_draw_textf(font, al_map_rgb(255, 255, 255), v.x, v.y - 14, ALLEGRO_ALIGN_CENTER, "%d", v.id);
         }
 
         for (auto& c : cabinas) {
-            bool libre = c.puedeAtender(simTime);
+            bool libre = (c.enServicio == nullptr);
             al_draw_textf(font, libre ? al_map_rgb(0, 255, 0) : al_map_rgb(255, 0, 0),
-                c.x, TOLL_Y - 105, ALLEGRO_ALIGN_CENTER, libre ? "LIBRE" : "OCUPADO");
+                c.x, TOLL_Y - 105, ALLEGRO_ALIGN_CENTER, libre ? "LIBRE" : "OCUPADA");
             al_draw_textf(font, al_map_rgb(255, 255, 255), c.x, TOLL_Y - 90, ALLEGRO_ALIGN_CENTER,
-                "F:%d P:%d", (int)c.fila.size(), c.procesados);
+                "Cola:%d  Proc:%d", (int)c.fila.size(), c.procesados);
         }
 
         al_draw_textf(font, al_map_rgb(255, 255, 255), 20, 10, 0,
-            "Tiempo: %.1f | Vehiculos: %d | x%.1f | P=%.2f",
+            "Tiempo: %.1fs | Activos: %d | Vel x%.1f | p=%.2f",
             simTime, (int)vehiculos.size(), speedMult, spawnP);
+        al_draw_textf(font, al_map_rgb(200, 200, 200), 20, 30, 0,
+            "[1]=1x [2]=2x [3]=5x  +/- cambia p  [ESC]=fin");
         al_flip_display();
     }
 
-    void update(float dt, double simTime) {
-        init();
+    // ---------- Update ---------- //
+    inline void update(float dt, double simTime) {
+        init_once();
+        const float FIXED_SPACING = 25.0f;
 
-        // ===== FASE 1: MOVIMIENTO EN CARRETERA =====
-        for (auto& carril : carriles) {
-            for (size_t i = 0; i < carril.vehiculos.size(); ++i) {
-                Vehiculo* v = carril.vehiculos[i];
-                if (!v || v->estado != EnCarretera) continue;
+        // (1) Movimiento en carretera
+        for (auto& v : vehiculos) {
+            if (v.estado != EnCarretera) continue;
 
-                // ⭐ Buscar vehículo DELANTE en la pila (índice mayor)
-                Vehiculo* adelante = nullptr;
-                float minDist = std::numeric_limits<float>::infinity();
+            auto same_lane = [&](const Vehiculo& a, const Vehiculo& b) {
+                return std::abs(a.x - b.x) < (road_width() / LANES) * 0.1f;
+                };
 
-                for (size_t j = 0; j < carril.vehiculos.size(); ++j) {
-                    Vehiculo* otro = carril.vehiculos[j];
-                    // Solo considerar los que están delante (mayor Y)
-                    if (otro != v && otro->y > v->y) {
-                        float dist = otro->y - v->y;
-                        if (dist < minDist) {
-                            minDist = dist;
-                            adelante = otro;
-                        }
-                    }
+            float menorDist = 1e9f;
+            for (auto& o : vehiculos) {
+                if (&o == &v) continue;
+                if (o.estado == EnCarretera && same_lane(o, v) && o.y > v.y)
+                    menorDist = std::min(menorDist, o.y - v.y);
+            }
+            if (menorDist > SAFE_DIST)
+                v.y += v.velocidad * dt;
+
+            if (v.y >= DECISION_Y) {
+                int mejor = 0;
+                size_t mejorLen = cabinas[0].fila.size();
+                for (int i = 1; i < BOOTHS; ++i) {
+                    size_t len = cabinas[i].fila.size();
+                    if (len < mejorLen) { mejor = i; mejorLen = len; }
                 }
+                if (v.cabinaElegida != -1 && cabinas[v.cabinaElegida].fila.size() <= mejorLen)
+                    mejor = v.cabinaElegida;
 
-                // ⭐ REGLA: No acercarse a menos de SAFE_DIST
-                if (adelante && minDist < SAFE_DIST) {
-                    continue; // NO avanzar
+                if ((int)cabinas[mejor].fila.size() < 5) {
+                    v.cabinaElegida = mejor;
+                    v.x = cabinas[mejor].x;
+                    v.estado = EnCola;
+                    v.tLlegadaCola = simTime;
+                    float baseY = DECISION_Y - 10.0f;
+                    if (cabinas[mejor].fila.empty())
+                        v.y = baseY;
+                    else
+                        v.y = std::min(baseY, cabinas[mejor].fila.back()->y - FIXED_SPACING);
+                    cabinas[mejor].fila.push_back(&v);
                 }
-
-                // Avanzar
-                v->y += v->velocidad * dt;
-
-                // PUNTO DE DECISIÓN
-                if (v->y >= DECISION_Y) {
-                    // Elegir cabina con menor fila
-                    int mejorCabina = 0;
-                    size_t menorFila = cabinas[0].fila.size();
-                    for (size_t j = 1; j < cabinas.size(); ++j) {
-                        if (cabinas[j].fila.size() < menorFila) {
-                            mejorCabina = (int)j;
-                            menorFila = cabinas[j].fila.size();
-                        }
-                    }
-
-                    // ⭐ CAMBIO DE PILA: Sacar de carril, agregar AL FINAL de cabina
-                    carril.remover(v);
-                    cabinas[mejorCabina].agregarAFila(v, simTime);
-                }
+                else v.y = DECISION_Y - 10;
             }
         }
 
-        // ===== FASE 2: GESTIÓN DE CABINAS =====
+        // (2) Colas y servicio
         for (auto& cab : cabinas) {
-            float stopY = cab.stopY();
+            const float baseStop = cab.stopY();
+            const float holdY = DECISION_Y - 10.0f;
 
-            // Procesar vehículo en servicio
-            if (cab.enServicio) {
-                Vehiculo* v = cab.enServicio;
-
-                // Alineación forzada
-                v->x = cab.x;
-                v->y = stopY;
-                v->estado = EnServicio;
-
-                v->restanteServicio -= dt;
-
-                if (v->restanteServicio <= 0.0f) {
-                    v->estado = Saliendo;
-                    v->tSalida = simTime;
-                    cab.procesados++;
-                    cab.enServicio = nullptr;
-                    cab.cooldownHasta = simTime + 1.5;
-                }
-            }
-
-            // ⭐ MOVER LA FILA CON ORDEN ESTRICTO
-            for (int i = (int)cab.fila.size() - 1; i >= 0; --i) {
+            for (size_t i = 0; i < cab.fila.size(); ++i) {
                 Vehiculo* v = cab.fila[i];
                 if (!v) continue;
-
-                // ⭐ Alineación forzada en X
                 v->x = cab.x;
 
-                // ⭐ Calcular posición objetivo basada en ÍNDICE
-                float targetY;
-                if (i == 0) {
-                    // El primero va a la posición de entrada
-                    targetY = stopY;
-                }
-                else {
-                    // Los demás van DETRÁS del anterior con QUEUE_SPACING
-                    targetY = stopY - (float)i * QUEUE_SPACING;
-                }
+                bool puedeCruzar = (i == 0) && (cab.enServicio == nullptr) && (simTime >= cab.tBloqueadaHasta);
+                float targetY = puedeCruzar ? baseStop : (holdY - (float)i * FIXED_SPACING);
 
-                // ⭐ REGLA CRÍTICA: No puede adelantar al de adelante
                 if (i > 0) {
                     Vehiculo* adelante = cab.fila[i - 1];
-                    float distanciaAlFrente = adelante->y - v->y;
-
-                    // ⭐ Si está muy cerca del de adelante, NO avanzar
-                    if (distanciaAlFrente < MIN_DISTANCE) {
-                        continue; // NO moverse
-                    }
-
-                    // ⭐ Ajustar targetY para no sobrepasar
-                    float maxY = adelante->y - MIN_DISTANCE;
-                    if (targetY > maxY) {
-                        targetY = maxY;
-                    }
+                    float maxY = adelante->y - FIXED_SPACING;
+                    if (targetY > maxY) targetY = maxY;
                 }
 
-                // ⭐ CASO ESPECIAL: El primero intenta entrar
-                if (i == 0 && cab.puedeAtender(simTime)) {
-                    if (v->y >= stopY - 5.0f) {
-                        // ⭐ ENTRAR A SERVICIO
-                        if (cab.enServicio == nullptr) {
-                            v->estado = EnServicio;
-                            v->tiempoServicio = Uservice(rng);
-                            v->restanteServicio = v->tiempoServicio;
-                            v->tInicioServicio = simTime;
-                            v->y = stopY;
-                            v->x = cab.x;
-
-                            cab.enServicio = v;
-                            cab.fila.pop_front();
-                            cab.reindexar(); // ⭐ Reindexar después de quitar el primero
-                            break; // Salir del loop de esta cabina
-                        }
-                    }
-                }
-
-                // ⭐ Movimiento suave hacia targetY
                 float dy = targetY - v->y;
-                if (fabs(dy) > 1.0f) {
-                    float move = v->velocidad * 0.4f * dt;
-                    v->y += clamp_value(dy, -move, move);
+                if (std::fabs(dy) > 0.5f) {
+                    float step = v->velocidad * 0.3f * dt;
+                    if (!puedeCruzar && v->y < DECISION_Y && (v->y + step) > DECISION_Y)
+                        step = DECISION_Y - v->y;
+                    v->y += clamp_value(dy, -step, step);
                 }
-                else {
-                    v->y = targetY;
+                else v->y = targetY;
+            }
+
+            if (!cab.enServicio && !cab.fila.empty() && simTime >= cab.tBloqueadaHasta) {
+                Vehiculo* f0 = cab.fila.front();
+                if (std::fabs(f0->y - baseStop) < 1.0f) {
+                    f0->y = baseStop;
+                    cab.enServicio = f0;
+                    f0->estado = EnServicio;
+                    f0->tiempoServicio = Uservice(rng);
+                    f0->restanteServicio = f0->tiempoServicio;
+                    f0->tInicioServicio = simTime;
+                    cab.tOcupadaHasta = simTime;
+                    cab.fila.pop_front();
+                }
+            }
+
+            if (cab.enServicio) {
+                Vehiculo* s = cab.enServicio;
+                s->x = cab.x;
+                s->y = baseStop;
+                s->restanteServicio -= dt;
+                if (s->restanteServicio <= 0.0f) {
+                    s->estado = Saliendo;
+                    s->tSalidaCabina = simTime;
+                    cab.procesados++;
+                    cab.tOcupadaAcum += (simTime - cab.tOcupadaHasta);
+                    cab.enServicio = nullptr;
+                    cab.tBloqueadaHasta = simTime + CLEAR_TIME;
+                    bitacora.push_back({ s->id, s->tCreacion, s->tLlegadaCola, s->tInicioServicio, s->tSalidaCabina });
                 }
             }
         }
 
-        // ===== FASE 3: SALIDA =====
+        // (3) Salida
         for (auto& v : vehiculos) {
             if (v.estado != Saliendo) continue;
-            v.y += v.velocidad * 1.2f * dt;
+            v.y += v.vSalida * dt;
             if (v.y > EXIT_Y) v.estado = Salio;
         }
-
-        // Limpieza
-        vehiculos.erase(
-            std::remove_if(vehiculos.begin(), vehiculos.end(),
-                [](const Vehiculo& v) { return v.estado == Salio; }),
-            vehiculos.end()
-        );
+        // (4) salida
+        vehiculos.remove_if([](const Vehiculo& v) {
+            return v.estado == Salio;
+            });
     }
 
-    void probabilistic_spawn(double simTime, float spawnProb) {
-        init();
+    // ---------- Spawn ---------- //
+    inline void probabilistic_spawn(double simTime, float spawnProb) {
+        init_once();
         static int nextId = 1;
-        static double nextSpawn = 0.0;
         if ((int)vehiculos.size() >= MAX_VEHICLES) return;
         if (prob(rng) >= spawnProb) return;
-        if (simTime < nextSpawn) return;
 
         const float SPAWN_Y = -20.0f;
         const float MIN_GAP = SAFE_DIST * 2.0f;
-        std::vector<int> disponibles;
-
-        for (int i = 0; i < LANES; ++i) {
-            bool libre = true;
-            for (auto* v : carriles[i].vehiculos) {
-                if (v->y > SPAWN_Y && (v->y - SPAWN_Y) < MIN_GAP) {
-                    libre = false;
-                    break;
+        std::vector<int> libres;
+        for (int lane = 0; lane < LANES; ++lane) {
+            float x = lane_center_x(lane);
+            bool ok = true;
+            for (auto& v : vehiculos) {
+                if (v.estado == EnCarretera && std::fabs(v.x - x) < 1.0f) {
+                    if ((v.y - SPAWN_Y) < MIN_GAP) { ok = false; break; }
                 }
             }
-            if (libre) disponibles.push_back(i);
+            if (ok) libres.push_back(lane);
         }
+        if (libres.empty()) return;
 
-        if (disponibles.empty()) return;
-
-        int lane = disponibles[rand() % disponibles.size()];
-        float vel = 100.0f + (rand() % 40);
-        vehiculos.emplace_back(nextId++, carriles[lane].x, SPAWN_Y, vel, lane, simTime);
-        carriles[lane].agregar(&vehiculos.back());
-        nextSpawn = simTime + 0.3;
+        int lane = libres[rng() % libres.size()];
+        float x = lane_center_x(lane);
+        float vel = 100.0f + (rng() % 45);
+        vehiculos.emplace_back(nextId++, x, SPAWN_Y, vel, lane, simTime);
     }
 
-    inline void export_csv(const char* path) {
+    // ---------- CSV + Stats ---------- //
+    inline void export_csv(const char* path, const std::vector<Registro>& logs) {
         std::ofstream out(path);
-        out << "ID,Creacion,LlegadaCola,InicioServicio,Salida\n";
-        for (auto& v : vehiculos) {
-            if (v.tSalida >= 0) {
-                out << v.id << "," << v.tCreacion << "," << v.tLlegadaCola << ","
-                    << v.tInicioServicio << "," << v.tSalida << "\n";
+        out << "id,tCreacion,tLlegadaCola,tInicioServicio,tSalidaCabina\n";
+        for (auto& r : logs)
+            out << r.id << "," << r.tCreacion << "," << r.tLlegadaCola << ","
+            << r.tInicioServicio << "," << r.tSalidaCabina << "\n";
+    }
+
+    inline std::vector<Registro> build_logs_snapshot() {
+        return bitacora;
+    }
+
+    inline Stats compute_stats_from_csv(const char* path, double simDurationSecs) {
+        Stats st;
+        st.utilizacionPorCabina.resize(BOOTHS, 0.0);
+        double totalTime = simDurationSecs > 0 ? simDurationSecs : 1.0;
+        for (int i = 0; i < BOOTHS; ++i)
+            st.utilizacionPorCabina[i] = cabinas[i].tOcupadaAcum / totalTime;
+
+        std::ifstream in(path);
+        std::string line;
+        if (!in.good()) return st;
+        std::getline(in, line);
+        double sumEspera = 0.0, sumTotal = 0.0; int n = 0;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            std::stringstream ss(line);
+            std::string s; int id; char comma;
+            double tC, tLC, tIS, tSC;
+            ss >> id >> comma >> tC >> comma >> tLC >> comma >> tIS >> comma >> tSC;
+            if (tSC >= 0 && tIS >= 0 && tLC >= 0 && tC >= 0) {
+                double espera = tIS - tLC; // espera en cola
+                double total = tSC - tC;  // tiempo total en sistema
+                sumEspera += espera;
+                sumTotal += total;
+                n++;
             }
         }
-        out.close();
+        st.totalProcesados = n;
+        if (n > 0) {
+            st.promEspera = sumEspera / n;
+            st.promTotalSistema = sumTotal / n;
+            st.flujoPorMin = (double)n / (totalTime / 60.0);
+        }
+        return st;
+    }
+
+    inline void draw_stats_screen(ALLEGRO_FONT* font, const Stats& st) {
+        al_clear_to_color(al_map_rgb(20, 20, 20));
+        al_draw_textf(font, al_map_rgb(255, 255, 255), SCREEN_W / 2, 40, ALLEGRO_ALIGN_CENTER, "Estadisticas finales");
+        al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 100, 0, "Vehiculos procesados: %d", st.totalProcesados);
+        al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 130, 0, "Promedio espera (cola): %.2fs", st.promEspera);
+        al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 160, 0, "Promedio total en sistema: %.2fs", st.promTotalSistema);
+        al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 190, 0, "Flujo promedio: %.2f veh/min", st.flujoPorMin);
+        for (int i = 0; i < BOOTHS; ++i) {
+            al_draw_textf(font, al_map_rgb(180, 180, 255), 60, 230 + i * 24, 0,
+                "Cabina %d utilizacion: %d%%", i + 1, (int)std::round(100.0 * st.utilizacionPorCabina[i]));
+        }
+        al_draw_textf(font, al_map_rgb(255, 255, 0), SCREEN_W / 2, SCREEN_H - 40, ALLEGRO_ALIGN_CENTER, "[Esc] para salir");
+        al_flip_display();
     }
 
 } // namespace Escenario

@@ -103,12 +103,13 @@ namespace Escenario {
     inline float lane_center_x(int i) { return ROAD_L + (road_width() / LANES) * (i + 0.5f); }
     inline float booth_center_x(int i) { return ROAD_L + (road_width() / BOOTHS) * (i + 0.5f); }
 
-    inline void reset() {
+    inline void reset(int cabinasPersonalizadas = BOOTHS) {
         vehiculos.clear();
         cabinas.clear();
-        bitacora.clear();
-        for (int i = 0; i < BOOTHS; ++i) cabinas.emplace_back(i, booth_center_x(i), TOLL_Y);
+        for (int i = 0; i < cabinasPersonalizadas; ++i)
+            cabinas.emplace_back(i, booth_center_x(i), TOLL_Y);
     }
+
 
     inline void init_once() {
         if (!cabinas.empty()) return;

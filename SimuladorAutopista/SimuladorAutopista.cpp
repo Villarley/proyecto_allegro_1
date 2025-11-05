@@ -2,7 +2,8 @@
 #include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_font.h>
 #include <allegro5/allegro_ttf.h>
-#include "Escenario.h"
+#include <allegro5/allegro_native_dialog.h>
+#include "escenario.h"
 #include <string>
 #include <fstream>
 
@@ -17,6 +18,7 @@ int main() {
     al_init_primitives_addon();
     al_init_font_addon();
     al_init_ttf_addon();
+    al_init_native_dialog_addon();
 
     ALLEGRO_DISPLAY* display = al_create_display(SCREEN_W, SCREEN_H);
     ALLEGRO_EVENT_QUEUE* queue = al_create_event_queue();
@@ -42,28 +44,59 @@ int main() {
 
     al_start_timer(timer);
 
-    // Ruta del CSV (junto al .vcxproj)
-    const char* CSV_PATH = "C:\\Temp\\toll_simulation_log.csv";
+    // --- Archivo CSV dentro del proyecto ---
+    const char* CSV_PATH = "toll_simulation_log.csv";
+
+    // Crear archivo CSV al inicio (encabezado)
+    {
+        std::ofstream out(CSV_PATH, std::ios::out | std::ios::trunc);
+        if (out.is_open()) {
+            out << "id,tCreacion,tLlegadaCola,tInicioServicio,tSalidaCabina\n";
+            out.close();
+        }
+        else {
+            al_show_native_message_box(nullptr, "Error",
+                "No se pudo crear el archivo CSV.", CSV_PATH, nullptr, 0);
+        }
+    }
 
     // --- Funciones visuales ---
     auto draw_menu = [&](ALLEGRO_FONT* font, int seleccion) {
         al_clear_to_color(al_map_rgb(20, 20, 20));
-        al_draw_textf(font, al_map_rgb(255, 255, 255), SCREEN_W / 2, 100, ALLEGRO_ALIGN_CENTER, "SIMULADOR DE TRAFICO Y PEAJE");
-        const char* opciones[] = { "Iniciar simulacion", "Configuracion", "Ver estadisticas", "Salir" };
+        al_draw_textf(font, al_map_rgb(255, 255, 255),
+            SCREEN_W / 2, 100, ALLEGRO_ALIGN_CENTER,
+            "SIMULADOR DE TRAFICO Y PEAJE");
+
+        const char* opciones[] = {
+            "Iniciar simulacion",
+            "Configuracion",
+            "Ver estadisticas",
+            "Salir"
+        };
+
         for (int i = 0; i < 4; i++) {
-            ALLEGRO_COLOR c = (i == seleccion) ? al_map_rgb(255, 255, 0) : al_map_rgb(180, 180, 180);
-            al_draw_textf(font, c, SCREEN_W / 2, 200 + i * 50, ALLEGRO_ALIGN_CENTER, opciones[i]);
+            ALLEGRO_COLOR c = (i == seleccion)
+                ? al_map_rgb(255, 255, 0)
+                : al_map_rgb(180, 180, 180);
+            al_draw_textf(font, c, SCREEN_W / 2, 200 + i * 50,
+                ALLEGRO_ALIGN_CENTER, opciones[i]);
         }
-        al_draw_textf(font, al_map_rgb(255, 255, 0), SCREEN_W / 2, SCREEN_H - 40, ALLEGRO_ALIGN_CENTER, "[ENTER] Seleccionar | [ESC] Salir");
+
+        al_draw_textf(font, al_map_rgb(255, 255, 0),
+            SCREEN_W / 2, SCREEN_H - 40, ALLEGRO_ALIGN_CENTER,
+            "[ENTER] Seleccionar | [ESC] Salir");
         al_flip_display();
         };
 
     auto draw_config = [&](ALLEGRO_FONT* font, int cabinas) {
         al_clear_to_color(al_map_rgb(30, 30, 30));
-        al_draw_textf(font, al_map_rgb(255, 255, 255), SCREEN_W / 2, 150, ALLEGRO_ALIGN_CENTER, "CONFIGURACION");
-        al_draw_textf(font, al_map_rgb(200, 200, 200), SCREEN_W / 2, 250, ALLEGRO_ALIGN_CENTER,
+        al_draw_textf(font, al_map_rgb(255, 255, 255),
+            SCREEN_W / 2, 150, ALLEGRO_ALIGN_CENTER, "CONFIGURACION");
+        al_draw_textf(font, al_map_rgb(200, 200, 200),
+            SCREEN_W / 2, 250, ALLEGRO_ALIGN_CENTER,
             "Numero de cabinas: %d", cabinas);
-        al_draw_textf(font, al_map_rgb(255, 255, 0), SCREEN_W / 2, SCREEN_H - 60, ALLEGRO_ALIGN_CENTER,
+        al_draw_textf(font, al_map_rgb(255, 255, 0),
+            SCREEN_W / 2, SCREEN_H - 60, ALLEGRO_ALIGN_CENTER,
             "[Flechas Arriba/Abajo] Cambiar  |  [M] Menu");
         al_flip_display();
         };
@@ -75,7 +108,8 @@ int main() {
         ALLEGRO_EVENT ev;
         al_wait_for_event(queue, &ev);
 
-        if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) running = false;
+        if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE)
+            running = false;
 
         // === MENU PRINCIPAL ===
         if (estadoActual == MENU) {
@@ -107,8 +141,9 @@ int main() {
         // === CONFIGURACION ===
         else if (estadoActual == CONFIG) {
             if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
+                // limitar máximo a 5 (requisito)
                 if (ev.keyboard.keycode == ALLEGRO_KEY_UP)
-                    cabinasConfig = std::min(10, cabinasConfig + 1);
+                    cabinasConfig = std::min(5, cabinasConfig + 1);
                 if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN)
                     cabinasConfig = std::max(1, cabinasConfig - 1);
                 if (ev.keyboard.keycode == ALLEGRO_KEY_M)
@@ -126,12 +161,11 @@ int main() {
                 update((float)dt, simTime);
                 redraw = true;
 
-                // Guardar CSV al terminar
+                // Guardar CSV al terminar simulación
                 if (simTime >= SIM_LIMIT) {
                     logs = build_logs_snapshot();
 
-                    // --- Escritura manual sin filesystem ---
-                    std::ofstream out(CSV_PATH);
+                    std::ofstream out(CSV_PATH, std::ios::out | std::ios::trunc);
                     if (out.is_open()) {
                         out << "id,tCreacion,tLlegadaCola,tInicioServicio,tSalidaCabina\n";
                         for (size_t i = 0; i < logs.size(); i++) {
@@ -143,13 +177,20 @@ int main() {
                         }
                         out.close();
                     }
+                    else {
+                        al_show_native_message_box(nullptr, "Error",
+                            "No se pudo escribir el archivo CSV.",
+                            CSV_PATH, nullptr, 0);
+                    }
 
                     st = compute_stats_from_csv(CSV_PATH, simTime);
 
                     al_clear_to_color(al_map_rgb(0, 0, 0));
-                    al_draw_textf(font, al_map_rgb(0, 255, 0), SCREEN_W / 2, SCREEN_H / 2 - 10, ALLEGRO_ALIGN_CENTER,
+                    al_draw_textf(font, al_map_rgb(0, 255, 0),
+                        SCREEN_W / 2, SCREEN_H / 2 - 10, ALLEGRO_ALIGN_CENTER,
                         "Simulacion finalizada y guardada.");
-                    al_draw_textf(font, al_map_rgb(200, 200, 200), SCREEN_W / 2, SCREEN_H / 2 + 20, ALLEGRO_ALIGN_CENTER,
+                    al_draw_textf(font, al_map_rgb(200, 200, 200),
+                        SCREEN_W / 2, SCREEN_H / 2 + 20, ALLEGRO_ALIGN_CENTER,
                         "Archivo: toll_simulation_log.csv");
                     al_flip_display();
                     al_rest(2.0);
@@ -184,22 +225,27 @@ int main() {
             std::ifstream test(CSV_PATH);
             if (!test.good()) {
                 al_clear_to_color(al_map_rgb(0, 0, 0));
-                al_draw_textf(font, al_map_rgb(255, 100, 100), SCREEN_W / 2, SCREEN_H / 2 - 20, ALLEGRO_ALIGN_CENTER,
+                al_draw_textf(font, al_map_rgb(255, 100, 100),
+                    SCREEN_W / 2, SCREEN_H / 2 - 20, ALLEGRO_ALIGN_CENTER,
                     "No hay datos registrados aun.");
-                al_draw_textf(font, al_map_rgb(200, 200, 200), SCREEN_W / 2, SCREEN_H / 2 + 20, ALLEGRO_ALIGN_CENTER,
+                al_draw_textf(font, al_map_rgb(200, 200, 200),
+                    SCREEN_W / 2, SCREEN_H / 2 + 20, ALLEGRO_ALIGN_CENTER,
                     "Ejecuta una simulacion primero.");
-                al_draw_textf(font, al_map_rgb(255, 255, 0), SCREEN_W / 2, SCREEN_H - 40, ALLEGRO_ALIGN_CENTER,
+                al_draw_textf(font, al_map_rgb(255, 255, 0),
+                    SCREEN_W / 2, SCREEN_H - 40, ALLEGRO_ALIGN_CENTER,
                     "[M] Volver al menu");
                 al_flip_display();
 
-                if (ev.type == ALLEGRO_EVENT_KEY_DOWN && ev.keyboard.keycode == ALLEGRO_KEY_M)
+                if (ev.type == ALLEGRO_EVENT_KEY_DOWN &&
+                    ev.keyboard.keycode == ALLEGRO_KEY_M)
                     estadoActual = MENU;
             }
             else {
                 test.close();
                 st = compute_stats_from_csv(CSV_PATH, simTime);
                 draw_stats_screen(font, st);
-                if (ev.type == ALLEGRO_EVENT_KEY_DOWN && ev.keyboard.keycode == ALLEGRO_KEY_M)
+                if (ev.type == ALLEGRO_EVENT_KEY_DOWN &&
+                    ev.keyboard.keycode == ALLEGRO_KEY_M)
                     estadoActual = MENU;
             }
         }

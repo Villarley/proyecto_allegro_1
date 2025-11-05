@@ -146,14 +146,14 @@ namespace Escenario {
             if (menorDist > SAFE_DIST)
                 v.y += v.velocidad * dt;
 
-            if (v.y >= DECISION_Y) {
+            if (v.y >= DECISION_Y && !cabinas.empty()) {
                 int mejor = 0;
                 size_t mejorLen = cabinas[0].fila.size();
-                for (int i = 1; i < BOOTHS; ++i) {
+                for (int i = 1; i < (int)cabinas.size(); ++i) {
                     size_t len = cabinas[i].fila.size();
                     if (len < mejorLen) { mejor = i; mejorLen = len; }
                 }
-                if (v.cabinaElegida != -1 && cabinas[v.cabinaElegida].fila.size() <= mejorLen)
+                if (v.cabinaElegida != -1 && v.cabinaElegida < (int)cabinas.size() && cabinas[v.cabinaElegida].fila.size() <= mejorLen)
                     mejor = v.cabinaElegida;
 
                 if ((int)cabinas[mejor].fila.size() < 5) {
@@ -287,22 +287,40 @@ namespace Escenario {
 
     inline Stats compute_stats_from_csv(const char* path, double simDurationSecs) {
         Stats st;
-        st.utilizacionPorCabina.resize(BOOTHS, 0.0);
+
+        // Protecciones: si no hay cabinas usa tamaño por defecto
+        if (cabinas.empty()) {
+            st.utilizacionPorCabina = std::vector<double>(BOOTHS, 0.0);
+        }
+        else {
+            st.utilizacionPorCabina.resize((int)cabinas.size(), 0.0);
+        }
+
         double totalTime = simDurationSecs > 0 ? simDurationSecs : 1.0;
-        for (int i = 0; i < BOOTHS; ++i)
+
+        for (int i = 0; i < (int)st.utilizacionPorCabina.size() && i < (int)cabinas.size(); ++i)
             st.utilizacionPorCabina[i] = cabinas[i].tOcupadaAcum / totalTime;
 
         std::ifstream in(path);
+        if (!in.good()) {
+            st.totalProcesados = 0;
+            return st;
+        }
+
         std::string line;
-        if (!in.good()) return st;
-        std::getline(in, line);
-        double sumEspera = 0.0, sumTotal = 0.0; int n = 0;
+        std::getline(in, line); // salta encabezado
+        double sumEspera = 0.0, sumTotal = 0.0;
+        int n = 0;
+
         while (std::getline(in, line)) {
             if (line.empty()) continue;
             std::stringstream ss(line);
             std::string s; int id; char comma;
             double tC, tLC, tIS, tSC;
-            ss >> id >> comma >> tC >> comma >> tLC >> comma >> tIS >> comma >> tSC;
+
+            if (!(ss >> id >> comma >> tC >> comma >> tLC >> comma >> tIS >> comma >> tSC))
+                continue; // línea mal formada, la salta
+
             if (tSC >= 0 && tIS >= 0 && tLC >= 0 && tC >= 0) {
                 double espera = tIS - tLC;
                 double total = tSC - tC;
@@ -311,12 +329,16 @@ namespace Escenario {
                 n++;
             }
         }
+
+        in.close();
+
         st.totalProcesados = n;
         if (n > 0) {
             st.promEspera = sumEspera / n;
             st.promTotalSistema = sumTotal / n;
             st.flujoPorMin = (double)n / (totalTime / 60.0);
         }
+
         return st;
     }
 
@@ -327,9 +349,10 @@ namespace Escenario {
         al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 130, 0, "Promedio espera (cola): %.2fs", st.promEspera);
         al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 160, 0, "Promedio total en sistema: %.2fs", st.promTotalSistema);
         al_draw_textf(font, al_map_rgb(200, 200, 200), 60, 190, 0, "Flujo promedio: %.2f veh/min", st.flujoPorMin);
-        for (int i = 0; i < BOOTHS; ++i) {
-            al_draw_textf(font, al_map_rgb(180, 180, 255), 60, 230 + i * 24, 0,
-                "Cabina %d utilizacion: %d%%", i + 1, (int)std::round(100.0 * st.utilizacionPorCabina[i]));
+
+        for (size_t i = 0; i < st.utilizacionPorCabina.size(); ++i) {
+            al_draw_textf(font, al_map_rgb(180, 180, 255), 60, 230 + (int)i * 24, 0,
+                "Cabina %d utilizacion: %d%%", (int)i + 1, (int)std::round(100.0 * st.utilizacionPorCabina[i]));
         }
         al_draw_textf(font, al_map_rgb(255, 255, 0), SCREEN_W / 2, SCREEN_H - 40, ALLEGRO_ALIGN_CENTER, "[Esc] para salir");
         al_flip_display();

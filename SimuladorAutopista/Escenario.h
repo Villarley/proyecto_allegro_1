@@ -13,6 +13,10 @@
 #include <string>
 #include <cmath>
 
+// Se agregan los includes de las clases separadas
+#include "Vehiculo.h"
+#include "CabinaPeaje.h"
+
 // ---------- Util ---------- //
 template <typename T>
 T clamp_value(T v, T lo, T hi) { return (v < lo) ? lo : (v > hi ? hi : v); }
@@ -32,9 +36,6 @@ namespace Escenario {
     const float EXIT_Y = SCREEN_H + 50.0f;
     const float CLEAR_TIME = 2.0f;         // tiempo de limpieza tras servicio
 
-    // ---------- Estados ---------- //
-    enum Estado { EnCarretera, EnCola, EnServicio, Saliendo, Salio };
-
     // ---------- Métricas ---------- //
     struct Registro {
         int id;
@@ -50,44 +51,6 @@ namespace Escenario {
         double promTotalSistema = 0.0;
         double flujoPorMin = 0.0;
         std::vector<double> utilizacionPorCabina;
-    };
-
-    // ---------- Datos ---------- //
-    struct Vehiculo {
-        int id;
-        float x, y;
-        float velocidad;
-        float vSalida;
-        int cabinaElegida = -1;
-        int carrilInicial;
-        Estado estado = EnCarretera;
-
-        float tiempoServicio = 0.0f;
-        float restanteServicio = 0.0f;
-
-        double tCreacion = 0, tLlegadaCola = -1, tInicioServicio = -1, tSalidaCabina = -1;
-
-        Vehiculo(int _id, float _x, float _y, float _vel, int _lane, double simTime)
-            : id(_id), x(_x), y(_y), velocidad(_vel),
-            vSalida(std::max(_vel * 0.65f, 120.0f)),
-            carrilInicial(_lane), tCreacion(simTime) {
-        }
-    };
-
-    struct Cabina {
-        int id;
-        float x, y;
-        std::deque<Vehiculo*> fila;
-        Vehiculo* enServicio = nullptr;
-
-        double tOcupadaAcum = 0.0;
-        double tOcupadaHasta = 0.0;
-        double tBloqueadaHasta = 0.0;
-
-        int procesados = 0;
-
-        Cabina(int _id, float _x, float _y) : id(_id), x(_x), y(_y) {}
-        float stopY() const { return y - STOP_OFFSET; }
     };
 
     // ---------- Estado global ---------- //
@@ -109,7 +72,6 @@ namespace Escenario {
         for (int i = 0; i < cabinasPersonalizadas; ++i)
             cabinas.emplace_back(i, booth_center_x(i), TOLL_Y);
     }
-
 
     inline void init_once() {
         if (!cabinas.empty()) return;
@@ -276,7 +238,7 @@ namespace Escenario {
             v.y += v.vSalida * dt;
             if (v.y > EXIT_Y) v.estado = Salio;
         }
-        // (4) salida
+
         vehiculos.remove_if([](const Vehiculo& v) {
             return v.estado == Salio;
             });
@@ -342,8 +304,8 @@ namespace Escenario {
             double tC, tLC, tIS, tSC;
             ss >> id >> comma >> tC >> comma >> tLC >> comma >> tIS >> comma >> tSC;
             if (tSC >= 0 && tIS >= 0 && tLC >= 0 && tC >= 0) {
-                double espera = tIS - tLC; // espera en cola
-                double total = tSC - tC;  // tiempo total en sistema
+                double espera = tIS - tLC;
+                double total = tSC - tC;
                 sumEspera += espera;
                 sumTotal += total;
                 n++;

@@ -1,21 +1,36 @@
 #pragma once
-#include <allegro5/allegro_primitives.h>
+#include <algorithm>
+#include <cmath>
 
-struct Vehiculo {
-    float x;
-    float y;
-    float velocidad;
-    ALLEGRO_COLOR color;
+namespace Escenario {
 
-    Vehiculo(float xPos, float yPos, float vel, ALLEGRO_COLOR col)
-        : x(xPos), y(yPos), velocidad(vel), color(col) {
-    }
+    enum Estado { EnCarretera, EnCola, EnServicio, Saliendo, Salio };
 
-    void actualizar(float delta) {
-        y += velocidad * delta;
-    }
+    class Vehiculo {
+    public:
+        int id;
+        float x, y;
+        float velocidad;
+        float vSalida;
+        int cabinaElegida;
+        int carrilInicial;
+        Estado estado;
 
-    void dibujar() const {
-        al_draw_filled_rectangle(x - 15, y - 25, x + 15, y + 25, color);
-    }
-};
+        float tiempoServicio;
+        float restanteServicio;
+
+        double tCreacion;
+        double tLlegadaCola;
+        double tInicioServicio;
+        double tSalidaCabina;
+
+        Vehiculo(int _id, float _x, float _y, float _vel, int _lane, double simTime)
+            : id(_id), x(_x), y(_y), velocidad(_vel),
+            vSalida(std::max(_vel * 0.65f, 120.0f)),
+            cabinaElegida(-1), carrilInicial(_lane), estado(EnCarretera),
+            tiempoServicio(0.0f), restanteServicio(0.0f),
+            tCreacion(simTime), tLlegadaCola(-1), tInicioServicio(-1), tSalidaCabina(-1)
+        {
+        }
+    };
+}

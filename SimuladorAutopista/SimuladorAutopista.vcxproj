@@ -149,6 +149,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CabinaPeaje.h" />
     <ClInclude Include="Escenario.h" />
     <ClInclude Include="Simulator.h" />
     <ClInclude Include="Ui.h" />

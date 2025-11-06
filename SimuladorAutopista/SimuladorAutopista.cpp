@@ -193,7 +193,7 @@ int main() {
                     al_draw_textf(font, al_map_rgb(0, 255, 0),
                         SCREEN_W / 2, SCREEN_H / 2 - 10, ALLEGRO_ALIGN_CENTER,
                         "Simulacion finalizada y guardada.");
-                    al_draw_textf(font, al_map_rgb(200, 200, 200),
+                    al_draw_textf(font, al_map_rgb(200, 200, 200),  
                         SCREEN_W / 2, SCREEN_H / 2 + 20, ALLEGRO_ALIGN_CENTER,
                         "Archivo: toll_simulation_log.csv");
                     al_flip_display();

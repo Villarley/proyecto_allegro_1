@@ -38,6 +38,7 @@ namespace Escenario {
 
     // ---------- Métricas ---------- //
     struct Registro {
+		// Datos por vehículo
         int id;
         double tCreacion;
         double tLlegadaCola;
@@ -46,6 +47,7 @@ namespace Escenario {
     };
 
     struct Stats {
+		// Métricas generales
         int totalProcesados = 0;
         double promEspera = 0.0;
         double promTotalSistema = 0.0;
@@ -58,21 +60,24 @@ namespace Escenario {
     static std::vector<Cabina> cabinas;
     static std::vector<Registro> bitacora;
 
+	// ---------- RNG ---------- //
     static std::mt19937 rng((unsigned)time(NULL));
     static std::uniform_real_distribution<float> prob(0.0f, 1.0f);
     static std::uniform_real_distribution<float> Uservice(MIN_SERVICE, MAX_SERVICE);
 
+	// ---------- Inicialización y helpers ---------- //
     inline float road_width() { return ROAD_R - ROAD_L; }
     inline float lane_center_x(int i) { return ROAD_L + (road_width() / LANES) * (i + 0.5f); }
     inline float booth_center_x(int i) { return ROAD_L + (road_width() / BOOTHS) * (i + 0.5f); }
 
+	// reinicia el escenario
     inline void reset(int cabinasPersonalizadas = BOOTHS) {
         vehiculos.clear();
         cabinas.clear();
         for (int i = 0; i < cabinasPersonalizadas; ++i)
             cabinas.emplace_back(i, booth_center_x(i), TOLL_Y);
     }
-
+	// inicialización única
     inline void init_once() {
         if (!cabinas.empty()) return;
         reset();
@@ -80,6 +85,7 @@ namespace Escenario {
 
     // ---------- Dibujo ---------- //
     inline void draw_scene() {
+		// Fondo y carretera
         al_clear_to_color(al_map_rgb(34, 139, 34));
         al_draw_filled_rectangle(ROAD_L, 0, ROAD_R, SCREEN_H, al_map_rgb(50, 50, 50));
         for (int i = 1; i < LANES; ++i) {
@@ -91,11 +97,12 @@ namespace Escenario {
         for (auto& cab : cabinas)
             al_draw_filled_rectangle(cab.x - 35, TOLL_Y - 70, cab.x + 35, TOLL_Y - 20, al_map_rgb(180, 180, 180));
     }
-
+	// dibuja el escenario completo
     inline void draw(ALLEGRO_FONT* font, double simTime, double speedMult, float spawnP) {
         init_once();
         draw_scene();
 
+		//Se encarga de dibujar los vehiculos
         for (auto& v : vehiculos) {
             if (v.estado == Salio) continue;
             ALLEGRO_COLOR col =
@@ -108,6 +115,7 @@ namespace Escenario {
             al_draw_textf(font, al_map_rgb(255, 255, 255), v.x, v.y - 14, ALLEGRO_ALIGN_CENTER, "%d", v.id);
         }
 
+		//Se encarga de dibujar las cabinas
         for (auto& c : cabinas) {
             bool libre = (c.enServicio == nullptr);
             al_draw_textf(font, libre ? al_map_rgb(0, 255, 0) : al_map_rgb(255, 0, 0),
@@ -115,7 +123,7 @@ namespace Escenario {
             al_draw_textf(font, al_map_rgb(255, 255, 255), c.x, TOLL_Y - 90, ALLEGRO_ALIGN_CENTER,
                 "Cola:%d  Proc:%d", (int)c.fila.size(), c.procesados);
         }
-
+		//Texto relacionado a las estadisticas de la simulacion
         al_draw_textf(font, al_map_rgb(255, 255, 255), 20, 10, 0,
             "Tiempo: %.1fs | Activos: %d | Vel x%.1f | p=%.2f",
             simTime, (int)vehiculos.size(), speedMult, spawnP);
@@ -131,21 +139,25 @@ namespace Escenario {
 
         // (1) Movimiento en carretera
         for (auto& v : vehiculos) {
+            
             if (v.estado != EnCarretera) continue;
 
             auto same_lane = [&](const Vehiculo& a, const Vehiculo& b) {
                 return std::abs(a.x - b.x) < (road_width() / LANES) * 0.1f;
                 };
 
+			//Verificar distancia al vehículo adelante
             float menorDist = 1e9f;
             for (auto& o : vehiculos) {
                 if (&o == &v) continue;
                 if (o.estado == EnCarretera && same_lane(o, v) && o.y > v.y)
                     menorDist = std::min(menorDist, o.y - v.y);
             }
+			//Avanzar si hay espacio seguro
             if (menorDist > SAFE_DIST)
                 v.y += v.velocidad * dt;
 
+			//Decidir cabina al cruzar línea roja
             if (v.y >= DECISION_Y && !cabinas.empty()) {
                 int mejor = 0;
                 size_t mejorLen = cabinas[0].fila.size();
@@ -177,20 +189,24 @@ namespace Escenario {
             const float baseStop = cab.stopY();
             const float holdY = DECISION_Y - 10.0f;
 
+			//Movimiento de los vehículos en cola
             for (size_t i = 0; i < cab.fila.size(); ++i) {
                 Vehiculo* v = cab.fila[i];
                 if (!v) continue;
                 v->x = cab.x;
-
+                
+				//Decidir si puede avanzar o cruzar
                 bool puedeCruzar = (i == 0) && (cab.enServicio == nullptr) && (simTime >= cab.tBloqueadaHasta);
                 float targetY = puedeCruzar ? baseStop : (holdY - (float)i * FIXED_SPACING);
 
+				//Evitar choque con vehículo adelante
                 if (i > 0) {
                     Vehiculo* adelante = cab.fila[i - 1];
                     float maxY = adelante->y - FIXED_SPACING;
                     if (targetY > maxY) targetY = maxY;
                 }
 
+				//Ayuda con el movimiento suave de la cola
                 float dy = targetY - v->y;
                 if (std::fabs(dy) > 0.5f) {
                     float step = v->velocidad * 0.3f * dt;
@@ -200,7 +216,7 @@ namespace Escenario {
                 }
                 else v->y = targetY;
             }
-
+			//Incia el servicio en la cabina si es posible
             if (!cab.enServicio && !cab.fila.empty() && simTime >= cab.tBloqueadaHasta) {
                 Vehiculo* f0 = cab.fila.front();
                 if (std::fabs(f0->y - baseStop) < 1.0f) {
@@ -214,7 +230,7 @@ namespace Escenario {
                     cab.fila.pop_front();
                 }
             }
-
+            //Procesa el vehiculo en el serivico
             if (cab.enServicio) {
                 Vehiculo* s = cab.enServicio;
                 s->x = cab.x;
@@ -238,7 +254,7 @@ namespace Escenario {
             v.y += v.vSalida * dt;
             if (v.y > EXIT_Y) v.estado = Salio;
         }
-
+		// Elimina vehículos que salieron
         vehiculos.remove_if([](const Vehiculo& v) {
             return v.estado == Salio;
             });
@@ -248,9 +264,11 @@ namespace Escenario {
     inline void probabilistic_spawn(double simTime, float spawnProb) {
         init_once();
         static int nextId = 1;
+		//Si se alcanzó el máximo o no pasa la probabilidad, no spawnea
         if ((int)vehiculos.size() >= MAX_VEHICLES) return;
         if (prob(rng) >= spawnProb) return;
 
+		// Intentar aparecer en carriles libres
         const float SPAWN_Y = -20.0f;
         const float MIN_GAP = SAFE_DIST * 2.0f;
         std::vector<int> libres;
@@ -264,8 +282,10 @@ namespace Escenario {
             }
             if (ok) libres.push_back(lane);
         }
+		//Si no hay carriles libres, no spawnea
         if (libres.empty()) return;
 
+		//Escoge un carril libre al azar
         int lane = libres[rng() % libres.size()];
         float x = lane_center_x(lane);
         float vel = 100.0f + (rng() % 45);
@@ -280,11 +300,11 @@ namespace Escenario {
             out << r.id << "," << r.tCreacion << "," << r.tLlegadaCola << ","
             << r.tInicioServicio << "," << r.tSalidaCabina << "\n";
     }
-
+	//Se encarga del registro de los vehículos procesados hasta el momento
     inline std::vector<Registro> build_logs_snapshot() {
         return bitacora;
     }
-
+	//Se encarga de calcular las estadísticas a partir del archivo CSV
     inline Stats compute_stats_from_csv(const char* path, double simDurationSecs) {
         Stats st;
 
@@ -331,7 +351,7 @@ namespace Escenario {
         }
 
         in.close();
-
+		// Asignar resultados
         st.totalProcesados = n;
         if (n > 0) {
             st.promEspera = sumEspera / n;
@@ -341,7 +361,7 @@ namespace Escenario {
 
         return st;
     }
-
+	//Se encarga de dibujar la pantalla de estadísticas finales
     inline void draw_stats_screen(ALLEGRO_FONT* font, const Stats& st) {
         al_clear_to_color(al_map_rgb(20, 20, 20));
         al_draw_textf(font, al_map_rgb(255, 255, 255), SCREEN_W / 2, 40, ALLEGRO_ALIGN_CENTER, "Estadisticas finales");
@@ -358,4 +378,4 @@ namespace Escenario {
         al_flip_display();
     }
 
-} // namespace Escenario
+} 

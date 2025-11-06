@@ -3,9 +3,10 @@
 #include "Vehiculo.h"
 
 namespace Escenario {
-
+	//clase que representa una cabina de peaje
     class Cabina {
     public:
+		//atributos de la cabina
         int id;
         float x, y;
         std::deque<Vehiculo*> fila;
@@ -16,7 +17,7 @@ namespace Escenario {
         double tBloqueadaHasta;
 
         int procesados;
-
+		// constructor de la cabina
         Cabina(int _id, float _x, float _y)
             : id(_id), x(_x), y(_y), enServicio(nullptr),
             tOcupadaAcum(0.0), tOcupadaHasta(0.0),

@@ -47,7 +47,7 @@ int main() {
     // --- Archivo CSV dentro del proyecto ---
     const char* CSV_PATH = "toll_simulation_log.csv";
 
-    // Crear archivo CSV al inicio (encabezado)
+    // Crear archivo CSV al inicio
     {
         std::ofstream out(CSV_PATH, std::ios::out | std::ios::trunc);
         if (out.is_open()) {
@@ -61,6 +61,8 @@ int main() {
     }
 
     // --- Funciones visuales ---
+  
+	// Función para dibujar el menú principal
     auto draw_menu = [&](ALLEGRO_FONT* font, int seleccion) {
         al_clear_to_color(al_map_rgb(20, 20, 20));
         al_draw_textf(font, al_map_rgb(255, 255, 255),
@@ -88,6 +90,7 @@ int main() {
         al_flip_display();
         };
 
+	// Función para dibujar la pantalla de configuración
     auto draw_config = [&](ALLEGRO_FONT* font, int cabinas) {
         al_clear_to_color(al_map_rgb(30, 30, 30));
         al_draw_textf(font, al_map_rgb(255, 255, 255),
@@ -141,7 +144,7 @@ int main() {
         // === CONFIGURACION ===
         else if (estadoActual == CONFIG) {
             if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
-                // limitar máximo a 5 (requisito)
+                // limitar máximo a 5
                 if (ev.keyboard.keycode == ALLEGRO_KEY_UP)
                     cabinasConfig = std::min(5, cabinasConfig + 1);
                 if (ev.keyboard.keycode == ALLEGRO_KEY_DOWN)
@@ -154,6 +157,7 @@ int main() {
 
         // === SIMULACION ===
         else if (estadoActual == SIMULACION) {
+			//Actualización de la simulación
             if (ev.type == ALLEGRO_EVENT_TIMER) {
                 double dt = (1.0 / 60.0) * speedMult;
                 simTime += dt;
@@ -198,7 +202,7 @@ int main() {
                     estadoActual = ESTADISTICAS;
                 }
             }
-
+			// Controles durante la simulación
             if (ev.type == ALLEGRO_EVENT_KEY_DOWN) {
                 switch (ev.keyboard.keycode) {
                 case ALLEGRO_KEY_ESCAPE:
@@ -213,7 +217,7 @@ int main() {
                     spawnP = std::max(0.05f, spawnP - 0.05f); break;
                 }
             }
-
+            
             if (redraw && al_is_event_queue_empty(queue)) {
                 redraw = false;
                 draw(font, simTime, speedMult, spawnP);
